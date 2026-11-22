@@ -117,4 +117,47 @@ public class Util {
             );
         }
     }
+
+    /**
+     * Runs the given task on a dedicated thread that has a large stack and
+     * returns whatever the task threw. The nesting depth tests use this so the
+     * default maximum nesting depth is reached deterministically, independent
+     * of the stack size the test JVM was started with.
+     * @param task the code to run
+     * @return the Throwable thrown by the task, or null if it completed normally
+     */
+    public static Throwable throwableFromLargeStack(final Runnable task) {
+        final Throwable[] thrown = new Throwable[1];
+        Thread worker = new Thread(null, new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    task.run();
+                } catch (Throwable t) {
+                    thrown[0] = t;
+                }
+            }
+        }, "large-stack-test", 8L * 1024 * 1024);
+        worker.start();
+        try {
+            worker.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            fail("Interrupted while waiting for the large stack test thread");
+        }
+        return thrown[0];
+    }
+
+    /**
+     * Asserts that the given Throwable is the JSONException raised when the
+     * maximum nesting depth is reached while parsing.
+     * @param thrown the Throwable to check
+     * @param maxNestingDepth the maximum nesting depth expected in the message
+     */
+    public static void assertMaxNestingDepthReached(Throwable thrown, int maxNestingDepth) {
+        assertNotNull("Expecting a JSONException", thrown);
+        assertTrue("Wrong throwable thrown: " + thrown, thrown instanceof JSONException);
+        assertTrue("Wrong throwable thrown: not expecting message <" + thrown.getMessage() + ">",
+            thrown.getMessage().startsWith("Maximum nesting depth of " + maxNestingDepth));
+    }
 }
